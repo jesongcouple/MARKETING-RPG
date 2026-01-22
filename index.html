@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>JUN HYEOK RPG (Mobile)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#222222" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <style>
+    :root{--bg:#121212;--panel:#1e1e1e;--ink:#f5f5f5;--accent:#ffd54d;--muted:#9e9e9e;}
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Noto Sans KR',system-ui}
+    .wrap{max-width:560px;margin:0 auto;height:100%;display:flex;flex-direction:column}
+    header{padding:14px 16px;background:#000;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:10}
+    .brand{font-weight:700}
+    .pill{padding:6px 10px;border-radius:999px;background:#2a2a2a;font-size:12px;color:var(--muted)}
+    main{flex:1;overflow:auto}
+    .panel{background:var(--panel);border:1px solid #2c2c2c;border-radius:16px;padding:14px;margin:12px}
+    .btn{width:100%;padding:14px 16px;border:none;border-radius:12px;background:var(--accent);color:#000;font-weight:700;font-size:16px}
+    .btn.secondary{background:#2a2a2a;color:var(--ink);border:1px solid #3a3a3a}
+    .btn:active{transform:scale(.98)}
+    .row{display:flex;gap:8px}
+    .tabs{display:flex;gap:8px;padding:10px;position:sticky;bottom:0;background:#000}
+    .tab{flex:1;padding:10px;border-radius:12px;background:#1a1a1a;color:#ddd;text-align:center;font-size:12px}
+    .tab.active{background:var(--accent);color:#000;font-weight:800}
+    h2{margin:6px 0 10px 0;font-size:18px}
+    textarea,input,select{width:100%;padding:12px;border-radius:12px;border:1px solid #3a3a3a;background:#151515;color:#fff;font-size:15px}
+    .mono{white-space:pre-wrap;font-family:ui-monospace,Menlo,Consolas,monospace}
+    .muted{color:var(--muted)}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">JUN HYEOK RPG</div>
+      <div class="pill" id="topStats">LV1 • 0/10XP • 150G</div>
+    </header>
+
+    <main id="screen">
+
+      <!-- 시작 화면 -->
+      <section class="panel" id="start">
+        <h2>모험을 시작합니다</h2>
+        <p class="muted">API 키가 없으면 모의평가로 진행됩니다. (설정 탭)</p>
+        <button class="btn" id="btnStart">게임 시작</button>
+      </section>
+
+      <!-- 퀘스트 -->
+      <section class="panel hidden" id="quests">
+        <h2>📜 퀘스트</h2>
+        <div id="questList" class="mono"></div>
+        <div id="questDetail" class="panel hidden">
+          <div id="qMeta" class="mono"></div>
+          <textarea id="qAnswer" rows="6" placeholder="여기에 제출물을 작성 (퀴즈형은 A/B/C/D)"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button class="btn secondary" id="btnMock">모의평가</button>
+            <button class="btn" id="btnEval">GPT 평가</button>
+          </div>
+          <div id="qResult" class="mono" style="margin-top:10px"></div>
+        </div>
+      </section>
+
+      <!-- 상태 -->
+      <section class="panel hidden" id="status">
+        <h2>📊 상태</h2>
+        <div id="statusBody" class="mono"></div>
+      </section>
+
+      <!-- 인벤토리 -->
+      <section class="panel hidden" id="inventory">
+        <h2>🎒 인벤토리</h2>
+        <div id="invBody" class="mono">아이템 없음</div>
+      </section>
+
+      <!-- 포트폴리오 -->
+      <section class="panel hidden" id="portfolio">
+        <h2>🗂 포트폴리오</h2>
+        <div id="pfBody" class="mono muted">아직 기록 없음</div>
+      </section>
+
+      <!-- 설정 -->
+      <section class="panel hidden" id="settings">
+        <h2>⚙️ 설정</h2>
+        <label class="muted">OpenAI API 키 (선택)</label>
+        <input id="apiKey" placeholder="sk-..." />
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="btnSaveKey">키 저장</button>
+          <button class="btn secondary" id="btnExport">세이브 내보내기</button>
+          <button class="btn secondary" id="btnImport">세이브 불러오기</button>
+        </div>
+      </section>
+
+    </main>
+
+    <nav class="tabs">
+      <div class="tab active" data-tab="start">시작</div>
+      <div class="tab" data-tab="quests">퀘스트</div>
+      <div class="tab" data-tab="status">상태</div>
+      <div class="tab" data-tab="inventory">가방</div>
+      <div class="tab" data-tab="portfolio">포폴</div>
+      <div class="tab" data-tab="settings">설정</div>
+    </nav>
+  </div>
+
+  <script>
+    // ====== 간단 상태 ======
+    const SKEY='JH_MOBILE_SAVE_V1', AKEY='JH_OPENAI_KEY';
+    const baseStats={감각:5,기획력:5,자아감지력:5,집중력:5,정리력:5,사고유연성:5,분석력:5,체력:5,소통능력:5,방향감각:5};
+    let S=JSON.parse(localStorage.getItem(SKEY)||'null')||{
+      name:'JUN HYEOK', level:1, exp:0, gold:150, routineCoin:1,
+      stats: {...baseStats}, titles:[], inv:[], portfolio:[],
+      quests: makeQuests(120)
+    };
+
+    // ====== UI 전환 ======
+    const tabs=[...document.querySelectorAll('.tab')];
+    const views=['start','quests','status','inventory','portfolio','settings'];
+    tabs.forEach(t=>t.onclick=()=>show(t.dataset.tab));
+    function show(id){
+      views.forEach(v=>document.getElementById(v).classList.add('hidden'));
+      document.getElementById(id).classList.remove('hidden');
+      tabs.forEach(t=>t.classList.toggle('active', t.dataset.tab===id));
+      renderTop(); if(id==='quests') renderQuests();
+      if(id==='status') renderStatus();
+      if(id==='inventory') renderInv();
+      if(id==='portfolio') renderPf();
+      if(id==='settings') document.getElementById('apiKey').value=(localStorage.getItem(AKEY)||'');
+    }
+
+    // ====== 렌더 ======
+    function needExp(){return S.level*10}
+    function renderTop(){ document.getElementById('topStats').textContent=`LV${S.level} • ${S.exp}/${needExp()}XP • ${S.gold}G` }
+    function renderStatus(){
+      const l=[`이름: ${S.name}`,`레벨: ${S.level}  EXP: ${S.exp}/${needExp()}  GOLD: ${S.gold}`, '', '[능력치]'];
+      Object.entries(S.stats).forEach(([k,v])=>l.push(`- ${k}: ${v}`));
+      document.getElementById('statusBody').textContent=l.join('\n');
+    }
+    function renderInv(){ document.getElementById('invBody').textContent=S.inv.length? S.inv.map((it,i)=>`${i+1}. ${it.name} (${it.type}) - ${it.desc||''}`).join('\n') : '아이템 없음' }
+    function renderPf(){ document.getElementById('pfBody').textContent=S.portfolio.length? S.portfolio.map(p=>`- ${p.title} [${p.grade}]\n${p.summary}`).join('\n\n'):'아직 기록 없음' }
+
+    // ====== 퀘스트 ======
+    function makeQuests(n){
+      const cats=[
+        {key:'감도', stat:'감각', type:'창작형'},
+        {key:'언어', stat:'기획력', type:'창작형'},
+        {key:'브랜딩', stat:'분석력', type:'창작형'},
+        {key:'리디자인', stat:'정리력', type:'창작형'},
+        {key:'전략', stat:'사고유연성', type:'선택형'},
+        {key:'리서치', stat:'자아감지력', type:'선택형'},
+        {key:'광고용어', stat:'집중력', type:'퀴즈형'},
+        {key:'커뮤니케이션', stat:'소통능력', type:'창작형'},
+        {key:'체력루틴', stat:'체력', type:'선택형'},
+        {key:'내비게이션', stat:'방향감각', type:'퀴즈형'},
+      ];
+      const arr=[]; for(let i=1;i<=n;i++){ const c=cats[(i-1)%cats.length];
+        const q={id:'Q'+String(i).padStart(3,'0'), idx:i, title:`${c.key} 퀘스트 ${i}`, cat:c.key, stat:c.stat, type:c.type, unlocked:i<=6, done:false, grade:null};
+        if(c.type==='퀴즈형'){ q.quiz={question:`${c.key} 기본 개념을 고르세요.`, options:['A','B','C','D'], answer:'B'}; q.description='[퀴즈] 보기 중 정답 선택'; q.example='정답: A/B/C/D 중 하나'; }
+        else if(c.type==='선택형'){ q.choices=['전략 A','전략 B','전략 C']; q.description='[선택] 시나리오에서 최적 전략을 선택'; q.example='버튼 중 1개 선택'; }
+        else { q.description='[창작] 주제 분석/사례/아이디어를 6~12줄 작성'; q.example='문제→사례비교→인사이트→제안'; }
+        q.reward={exp:6+(i%5)*2, gold:30+(i%5)*15, item:(i%7===0?'집중의 비약':null)};
+        arr.push(q);
+      } return arr;
+    }
+
+    let currentQ=null;
+    function renderQuests(){
+      const box=document.getElementById('questList');
+      const open=S.quests.filter(q=>q.unlocked&&!q.done).slice(0,15);
+      box.innerHTML = open.map(q=>`• <b>${q.id}</b> ${q.title} <small class="muted">(${q.type}/${q.stat})</small> <button class="btn secondary" data-open="${q.id}" style="margin-top:6px">열기</button>`).join('\n');
+      box.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openQuest(b.dataset.open));
+      document.getElementById('questDetail').classList.add('hidden');
+    }
+    function openQuest(id){
+      const q=S.quests.find(x=>x.id===id); if(!q) return;
+      currentQ=q;
+      const meta=[
+        `[#${q.idx}] ${q.title} <${q.type}>`,
+        `대상 스탯: ${q.stat}`,
+        `설명: ${q.description}`,
+        `예시: ${q.example}`
+      ];
+      if(q.type==='퀴즈형'){ meta.push(`문항: ${q.quiz.question}`, '선택지: A / B / C / D'); }
+      if(q.type==='선택형'){ meta.push('선택지: '+q.choices.join(', ')); }
+      document.getElementById('qMeta').textContent=meta.join('\n');
+      document.getElementById('qAnswer').value='';
+      document.getElementById('qResult').textContent='';
+      document.getElementById('questDetail').classList.remove('hidden');
+    }
+
+    // ====== 평가(모의/GPT) ======
+    document.getElementById('btnMock').onclick=()=>doFinalize(mockEval());
+    document.getElementById('btnEval').onclick=async ()=>{
+      const key=localStorage.getItem(AKEY)||'';
+      if(!key){ document.getElementById('qResult').textContent='API 키가 없어 모의평가로 대체합니다.'; return doFinalize(mockEval()); }
+      const ans=document.getElementById('qAnswer').value.trim(); if(!ans) return alert('제출물이 비었습니다');
+      document.getElementById('qResult').textContent='평가 중...';
+      try{
+        const out=await gptEval(currentQ, ans, key);
+        document.getElementById('qResult').textContent=out.text;
+        doFinalize(out);
+      }catch(e){ document.getElementById('qResult').textContent='오류: '+e.message; }
+    };
+
+    function mockEval(){
+      const grades=['S','A','B','C','D']; const g=grades[Math.floor(Math.random()*grades.length)];
+      return {grade:g, text:`모의평가 결과: ${g}\n강점2/개선2/다음과업 제안`, summary:`모의피드백(${g})`};
+    }
+    async function gptEval(q, ans, key){
+      const res = await fetch('https://api.openai.com/v1/chat/completions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
+        body: JSON.stringify({
+          model:'gpt-4o',
+          messages:[
+            {role:'system',content:'너는 마케팅 RPG의 퀘스트 평가자다. 제출물에 대해 1) 한줄 총평 2) 강점 2개 3) 개선 2개 4) 최종 등급(S/A/B/C/D/F 한 글자) 5) 다음 과업을 간결히 출력.'},
+            {role:'user',content:`[퀘스트] ${q.title} / 유형:${q.type} / 스탯:${q.stat}\n[설명] ${q.description}\n[제출물]\n${ans}`}
+          ], temperature:0.7
+        })
+      });
+      if(!res.ok){ const t=await res.text(); throw new Error(`API ${res.status}: ${t}`); }
+      const data=await res.json(); const text=data.choices?.[0]?.message?.content||'(응답 없음)';
+      const g=(text.match(/\b([SABCDFr])\b/i)||[])[1]?.toUpperCase()||'B';
+      return {grade:g, text, summary:text};
+    }
+
+    function doFinalize({grade, text, summary}){
+      if(!currentQ) return;
+      const q=currentQ; q.done=true; q.grade=grade;
+      const mult={S:1.8,A:1.4,B:1.0,C:0.7,D:0.4,F:0.2}[grade]||1.0;
+      const exp=Math.round(q.reward.exp*mult), gold=Math.round(q.reward.gold*mult);
+      S.exp+=exp; S.gold+=gold;
+      if(grade==='S') S.stats[q.stat]=(S.stats[q.stat]||0)+2; else if(grade==='A') S.stats[q.stat]=(S.stats[q.stat]||0)+1;
+      if(q.reward.item) S.inv.push({name:q.reward.item,type:'소비',desc:`사용 시 ${q.stat}+1`});
+      S.portfolio.unshift({title:q.title, grade, summary});
+      levelUp(); unlockMore(); save();
+      document.getElementById('qResult').textContent += `\n\n— 결과 —\n등급:${grade}  EXP+${exp}  GOLD+${gold}`;
+      renderTop();
+    }
+
+    function levelUp(){ let need=needExp(), up=false; while(S.exp>=need){S.exp-=need; S.level++; need=needExp(); up=true;}
+      if(up){ const keys=Object.keys(S.stats); for(let i=0;i<3;i++){const k=keys[(S.level+i)%keys.length]; S.stats[k]++;} }
+    }
+    function unlockMore(){ const open=S.quests.filter(q=>q.unlocked&&!q.done).length; const toOpen=Math.max(0,10-open);
+      for(const q of S.quests){ if(!q.unlocked&&toOpen>0){ q.unlocked=true; } }
+    }
+
+    // ====== 저장 ======
+    function save(){ localStorage.setItem(SKEY, JSON.stringify(S)); }
+    document.getElementById('btnSaveKey').onclick=()=>{ localStorage.setItem(AKEY, document.getElementById('apiKey').value.trim()); alert('API 키 저장됨'); };
+    document.getElementById('btnExport').onclick=()=>{ const blob=new Blob([JSON.stringify(S)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='JH_RPG_SAVE.json'; a.click(); };
+    document.getElementById('btnImport').onclick=()=>{ const i=document.createElement('input'); i.type='file'; i.accept='.json,application/json'; i.onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ S=JSON.parse(r.result); save(); show('status'); }catch{ alert('불러오기 실패'); } }; r.readAsText(f); }; i.click(); };
+
+    // ====== 시작 및 SW 등록 ======
+    document.getElementById('btnStart').onclick=()=>{ show('quests'); save(); };
+    if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js')); }
+    renderTop(); // 첫 렌더
+  </script>
+</body>
+</html>
